@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AOE Tuition Management System – Invoice Generator</title>
+<style>
+  body { font-family: 'Segoe UI', sans-serif; background: #f7fafc; margin:0; padding:0; color:#333; }
+  main { max-width:900px; margin:40px auto; padding:20px; background:white; border-radius:10px; box-shadow:0 0 10px rgba(0,0,0,0.1);}
+  h2 { color:#1761a0; text-align:center; }
+  .navlink { margin-bottom:20px; display:inline-block; background:#1761a0; color:#fff; padding:8px 14px; border-radius:5px; text-decoration:none; font-weight:500; margin-right:10px; }
+  .navlink:hover { background: #0f4a7e; }
+  form label { display:block; margin:10px 0 5px 0; }
+  form input, form textarea, form select { width:100%; padding:8px; margin-bottom:12px; }
+  .itemRow input { width:48%; display:inline-block; margin-right:4%; }
+  button { padding:10px 18px; background:#1761a0; color:white; border:none; cursor:pointer; border-radius:4px; margin-bottom:10px; }
+  table { width:100%; margin-top:20px; border-collapse:collapse; }
+  th, td { border:1px solid #ccc; padding:8px; }
+  th { background:#e5f1f9; text-align:left; }
+  footer { text-align:center; font-size:0.9rem; color:#555; margin-top:50px; }
+  @media print {
+    @page { size:A5 landscape; margin:10mm; }
+    body * { visibility:hidden; }
+    #invoiceArea, #invoiceArea * { visibility:visible; }
+    #invoiceArea { position:absolute; top:0; left:50%; transform:translateX(-50%); width:100%; max-width:260mm; font-family:Arial,sans-serif; font-size:9pt; line-height:1.1; box-sizing:border-box; padding:5mm; }
+    #invoiceArea table { border-collapse: collapse; font-size:9pt; margin-bottom:6px; }
+    #invoiceArea th, #invoiceArea td { border:1px solid #ccc; padding:4px 6px; }
+    #invoiceArea th { background:#e5f1f9; }
+    #invoiceArea .header { display:flex; align-items:center; margin-bottom:10px; }
+    #invoiceArea .header img { max-width:80px; margin-right:12px; }
+    #invoiceArea .header .schoolInfo h2 { margin:0; font-size:13pt; color:#1761a0; }
+    #invoiceArea .header .schoolInfo p { margin:2px 0; font-size:8.5pt; }
+    #invoiceFooter { margin-top:8px; text-align:right; font-weight:bold; font-size:9pt; }
+    #invoiceDisplay table.itemsTable th, #invoiceDisplay table.itemsTable td { font-size:9pt; padding:3px 4px; }
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.47.1/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+
+<main>
+  <h2>Invoice Generator</h2>
+  <div style="margin-bottom:20px; text-align:center;">
+    <a href="data.html" class="navlink">View All Bills</a>
+    <a href="students.html" class="navlink">Manage Students</a>
+  </div>
+
+  <form id="invoiceForm">
+    <label for="invoiceNo">Invoice No</label>
+    <input type="text" id="invoiceNo" required>
+
+    <label for="student">Student Name</label>
+    <select id="student" required>
+      <option value="">Select Student</option>
+    </select>
+
+    <label for="mobile">Parent's Mobile Number</label>
+    <input type="text" id="mobile" required readonly>
+
+    <label for="address">Address</label>
+    <textarea id="address" required readonly></textarea>
+
+    <label for="class">Class</label>
+    <input type="text" id="class" required readonly>
+
+    <label for="subject">Subjects</label>
+    <input type="text" id="subject" required readonly>
+
+    <h4>Invoice Items</h4>
+    <div id="itemsContainer">
+      <div class="itemRow" style="margin-bottom:10px;">
+        <input type="text" placeholder="Item Description" class="itemDesc" required>
+        <input type="number" placeholder="Amount ₹" class="itemAmount" required>
+      </div>
+    </div>
+    <button type="button" id="addItemBtn">Add Item</button>
+    <button type="submit">Generate Invoice</button>
+  </form>
+
+  <div id="invoiceArea" style="display:none; padding:20px;">
+    <div class="header">
+      <img src="assets/logo.png" alt="AOE Logo">
+      <div class="schoolInfo">
+        <h2>AOE School of English and Sciences</h2>
+        <p>Venkatesh Nagar Umri | Contact: 123456789</p>
+      </div>
+    </div>
+
+    <h3>Invoice</h3>
+    <div id="invoiceDisplay"></div>
+    <div id="invoiceFooter"></div>
+    <button onclick="window.print()">Print to PDF</button>
+  </div>
+</main>
+
+<footer>
+  &copy; 2025 AOE School of English and Sciences | Designed by Shrikant Jadhav
+</footer>
+
+<script>
+const SUPABASE_URL = "https://xdelxrxkskvajnmowovf.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhkZWx4cnhrc2t2YWpubW93b3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTQ2NzcsImV4cCI6MjA3NTc3MDY3N30.rwOuTyCHoKUnoaA8eOg7vRSkgbl3HDEbOqB9_6i9_Jc";
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const form = document.getElementById('invoiceForm');
+const invoiceArea = document.getElementById('invoiceArea');
+const invoiceDisplay = document.getElementById('invoiceDisplay');
+const invoiceFooter = document.getElementById('invoiceFooter');
+const addItemBtn = document.getElementById('addItemBtn');
+const itemsContainer = document.getElementById('itemsContainer');
+const studentSelect = document.getElementById('student');
+
+let students = [];
+
+// Load students
+async function loadStudents() {
+  try {
+    const { data, error } = await supabaseClient
+      .from('students')
+      .select('*')
+      .order('name', { ascending: true });
+    if (error) throw error;
+    students = data || [];
+    populateStudentDropdown();
+  } catch(err) {
+    console.error('Error loading students:', err.message);
+    alert('Failed to load students. Check console.');
+  }
+}
+
+function populateStudentDropdown() {
+  studentSelect.innerHTML = '<option value="">Select Student</option>';
+  students.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = s.name;
+    studentSelect.appendChild(opt);
+  });
+}
+
+// Auto-fill fields on student select
+studentSelect.addEventListener('change', () => {
+  const s = students.find(st => st.id == studentSelect.value);
+  if (s) {
+    document.getElementById('mobile').value = s.mobile || '';
+    document.getElementById('address').value = s.address || '';
+    document.getElementById('class').value = s.classval || '';
+    document.getElementById('subject').value = s.subjects || '';
+  } else {
+    document.getElementById('mobile').value = '';
+    document.getElementById('address').value = '';
+    document.getElementById('class').value = '';
+    document.getElementById('subject').value = '';
+  }
+});
+
+// Add more invoice items
+addItemBtn.addEventListener('click', () => {
+  const div = document.createElement('div');
+  div.className = 'itemRow';
+  div.style.marginBottom = '10px';
+  div.innerHTML = `
+    <input type="text" placeholder="Item Description" class="itemDesc" required>
+    <input type="number" placeholder="Amount ₹" class="itemAmount" required>
+  `;
+  itemsContainer.appendChild(div);
+});
+
+// Number to words
+function numberToWords(num){ 
+  const a=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten',
+           'Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
+  const b=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
+  function inWords(n){let str=''; 
+    if(n>9999999){ let crore=Math.floor(n/10000000); str+=inWords(crore)+' Crore '; n%=10000000; }
+    if(n>99999){ let lakh=Math.floor(n/100000); str+=inWords(lakh)+' Lakh '; n%=100000; }
+    if(n>999){ let thousand=Math.floor(n/1000); str+=inWords(thousand)+' Thousand '; n%=1000; }
+    if(n>99){ let hundred=Math.floor(n/100); str+=a[hundred]+' Hundred '; n%=100; }
+    if(n>19){ let ten=Math.floor(n/10); str+=b[ten]+' '; n%=10; }
+    if(n>0) str+=a[n]+' ';
+    return str.trim();
+  }
+  return num===0?'Zero':inWords(num);
+}
+
+// Generate invoice - FIXED COLUMN NAMES
+form.onsubmit = async function(e){
+  e.preventDefault();
+
+  const invoiceNo = document.getElementById('invoiceNo').value.trim();
+  const studentId = studentSelect.value;
+  const studentName = students.find(s=>s.id==studentId)?.name || '';
+  const mobile = document.getElementById('mobile').value;
+  const address = document.getElementById('address').value;
+  const classVal = document.getElementById('class').value;
+  const subject = document.getElementById('subject').value;
+  const dateStr = new Date().toISOString();
+
+  const items = [];
+  let totalAmount = 0;
+  document.querySelectorAll('.itemRow').forEach(r => {
+    const desc = r.querySelector('.itemDesc').value.trim();
+    const amt = parseInt(r.querySelector('.itemAmount').value.trim()) || 0;
+    items.push({ desc, amt });
+    totalAmount += amt;
+  });
+
+  // FIXED: Use lowercase column names to match database schema
+  const invoice = { 
+    invoiceno: invoiceNo,           // Fixed: was invoiceNo
+    student: studentName, 
+    studentid: Number(studentId), 
+    mobile, 
+    address, 
+    classval: classVal,             // Fixed: was classVal
+    subject, 
+    items, 
+    totalamount: totalAmount,       // Fixed: was totalAmount
+    date: dateStr 
+  };
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('invoices')
+      .insert([invoice])
+      .select();
+    
+    if (error) {
+      console.error('Supabase error details:', error);
+      throw error;
+    }
+
+    // Show invoice
+    let itemsHTML = '';
+    items.forEach((it, i) => {
+      itemsHTML += `<tr><td>${i+1}</td><td>${it.desc}</td><td>₹${it.amt}</td></tr>`;
+    });
+
+    invoiceDisplay.innerHTML = `<table>
+      <tr><th>Invoice No</th><td>${invoiceNo}</td></tr>
+      <tr><th>Student</th><td>${studentName}</td></tr>
+      <tr><th>Parent's Mobile</th><td>${mobile}</td></tr>
+      <tr><th>Address</th><td>${address}</td></tr>
+      <tr><th>Class</th><td>${classVal}</td></tr>
+      <tr><th>Subjects</th><td>${subject}</td></tr>
+      <tr><th>Date & Time</th><td>${new Date(dateStr).toLocaleString()}</td></tr>
+    </table>
+    <h4>Items</h4>
+    <table class="itemsTable">
+      <tr><th>#</th><th>Description</th><th>Amount</th></tr>
+      ${itemsHTML}
+      <tr><th colspan="2">Total</th><th>₹${totalAmount}</th></tr>
+      <tr><th colspan="2">Total in Words</th><th>${numberToWords(totalAmount)} Rupees Only</th></tr>
+    </table>`;
+
+    invoiceFooter.innerHTML = 'Signed by: Shrikant Jadhav';
+    invoiceArea.style.display = 'block';
+    
+    alert('Invoice saved successfully!');
+  } catch(err) {
+    console.error('Error saving invoice:', err.message, err);
+    alert('Failed to save invoice: ' + err.message);
+  }
+};
+
+loadStudents();
+</script>
+</body>
+</html>
