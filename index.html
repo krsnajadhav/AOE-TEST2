@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AOE Tuition Management System</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  * { box-sizing: border-box; margin:0; padding:0; font-family:'Segoe UI',sans-serif; }
+  body { background:#f7fafc; color:#333; }
+
+  main {
+    max-width:1000px;
+    margin:40px auto;
+    padding:30px 20px;
+    background:white;
+    border-radius:10px;
+    box-shadow:0 4px 15px rgba(0,0,0,0.1);
+    text-align:center;
+  }
+  main h2 { font-size:1.8rem; margin-bottom:10px; color:#2c5282; }
+  main p { font-size:1rem; color:#555; margin-bottom:30px; }
+
+  .buttons {
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+    gap:20px;
+    margin-bottom:30px;
+  }
+  .buttons a.button {
+    display:block;
+    background:#2b6cb0;
+    color:white;
+    padding:18px 20px;
+    border-radius:12px;
+    font-size:1.1rem;
+    font-weight:500;
+    transition:0.3s;
+    box-shadow:0 3px 6px rgba(0,0,0,0.1);
+    text-decoration: none;
+  }
+  .buttons a.button:hover {
+    background:#2c5282;
+    transform:translateY(-3px);
+    box-shadow:0 6px 12px rgba(0,0,0,0.15);
+  }
+
+  .dashboard {
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+    gap:20px;
+    margin-bottom:30px;
+  }
+  .card {
+    background:#edf2f7;
+    padding:20px;
+    border-radius:12px;
+    box-shadow:0 2px 5px rgba(0,0,0,0.1);
+    font-weight:500;
+  }
+  .card h3 { margin-bottom:10px; font-size:1.2rem; color:#2c5282; }
+  .card p { font-size:1.5rem; color:#111; }
+
+  table {
+    width:100%;
+    border-collapse:collapse;
+    margin-top:20px;
+    text-align:left;
+  }
+  th, td {
+    border:1px solid #bbb;
+    padding:8px;
+  }
+  th { background:#e3e7ee; }
+
+  tr.clickable { cursor:pointer; transition: background 0.2s; }
+  tr.clickable:hover { background:#e2e8f0; }
+
+  h3.section-title { text-align:left; color:#2c5282; margin-top:30px; }
+
+  footer { text-align:center; font-size:0.9rem; color:#555; margin:50px 0 20px 0; }
+
+  @media (max-width:500px) { main { padding:20px 15px; } }
+</style>
+</head>
+<body>
+
+<div id="header-placeholder"></div>
+
+<main>
+  <h2>Welcome, Shrikant Jadhav 👋</h2>
+  <p>Manage invoices, students, and records efficiently from one place.</p>
+
+  <!-- Dashboard Cards -->
+  <div class="dashboard">
+    <div class="card">
+      <h3>Total Students</h3>
+      <p id="totalStudents">0</p>
+    </div>
+    <div class="card">
+      <h3>Total Invoices</h3>
+      <p id="totalInvoices">0</p>
+    </div>
+    <div class="card">
+      <h3>Total Fees Collected (₹)</h3>
+      <p id="totalFeesCollected">₹0</p>
+    </div>
+  </div>
+
+  <!-- Navigation Buttons -->
+  <div class="buttons">
+    <a href="invoice.html" class="button">📄 Generate Invoice</a>
+    <a href="data.html" class="button">📊 View Invoice Data</a>
+    <a href="students.html" class="button">🎓 Manage Students</a>
+  </div>
+
+  <!-- Recent Students -->
+  <h3 class="section-title">Recent 5 Students</h3>
+  <table id="recentStudentsTable">
+    <thead>
+      <tr><th>#</th><th>Name</th><th>Class</th><th>Subjects</th><th>Mobile</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <!-- Recent Invoices -->
+  <h3 class="section-title">Recent 5 Invoices</h3>
+  <table id="recentInvoicesTable">
+    <thead>
+      <tr><th>Invoice No</th><th>Date</th><th>Student</th><th>Amount (₹)</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+</main>
+
+<footer>
+  &copy; 2025 AOE School of English & Sciences | Designed by Shrikant Jadhav
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  // Inject header
+  fetch('header.html')
+    .then(resp => resp.text())
+    .then(data => {
+      document.getElementById('header-placeholder').innerHTML = data;
+      const links = document.querySelectorAll('#header-placeholder a.logo-link');
+      links.forEach(link => link.href = 'index.html');
+    });
+
+  // Supabase Setup
+  const SUPABASE_URL = "https://xdelxrxkskvajnmowovf.supabase.co";
+  const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhkZWx4cnhrc2t2YWpubW93b3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTQ2NzcsImV4cCI6MjA3NTc3MDY3N30.rwOuTyCHoKUnoaA8eOg7vRSkgbl3HDEbOqB9_6i9_Jc";
+  const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  async function loadDashboard() {
+    try {
+      const { data: studentsData, error: studentsError } = await supabaseClient.from('students').select('*').order('id', { ascending: false });
+      const { data: invoicesData, error: invoicesError } = await supabaseClient.from('invoices').select('*').order('date', { ascending: false });
+
+      if (studentsError) console.error('Error loading students:', studentsError);
+      if (invoicesError) console.error('Error loading invoices:', invoicesError);
+
+      // Dashboard cards
+      document.getElementById('totalStudents').textContent = studentsData?.length || 0;
+      document.getElementById('totalInvoices').textContent = invoicesData?.length || 0;
+      
+      // FIXED: use lowercase totalamount
+      const totalFeesCollected = invoicesData?.reduce((sum, inv) => sum + (inv.totalamount || 0), 0) || 0;
+      document.getElementById('totalFeesCollected').textContent = `₹${totalFeesCollected}`;
+
+      // Recent Students
+      const recentStudents = studentsData?.slice(0,5) || [];
+      const recentStudentsTbody = document.querySelector('#recentStudentsTable tbody');
+      recentStudentsTbody.innerHTML = recentStudents.length
+        ? recentStudents.map((s,i)=>`<tr class="clickable" data-id="${s.id}">
+            <td>${i+1}</td><td>${s.name}</td><td>${s.classval}</td><td>${s.subjects}</td><td>${s.mobile}</td>
+          </tr>`).join('')
+        : '<tr><td colspan="5" style="text-align:center;">No students yet.</td></tr>';
+
+      // Click to edit student
+      document.querySelectorAll('#recentStudentsTable tr.clickable').forEach(row => {
+        row.addEventListener('click', () => {
+          const id = row.dataset.id;
+          window.location.href = `students.html#edit-${id}`;
+        });
+      });
+
+      // Recent Invoices - FIXED: use lowercase column names
+      const recentInvoices = invoicesData?.slice(0,5) || [];
+      const recentInvoicesTbody = document.querySelector('#recentInvoicesTable tbody');
+      recentInvoicesTbody.innerHTML = recentInvoices.length
+        ? recentInvoices.map(inv=>`<tr class="clickable" data-invoice="${inv.invoiceno}">
+            <td>${inv.invoiceno}</td>
+            <td>${new Date(inv.date).toLocaleDateString()}</td>
+            <td>${inv.student}</td>
+            <td>₹${inv.totalamount||0}</td>
+          </tr>`).join('')
+        : '<tr><td colspan="4" style="text-align:center;">No invoices yet.</td></tr>';
+
+      // Click to view invoice
+      document.querySelectorAll('#recentInvoicesTable tr.clickable').forEach(row => {
+        row.addEventListener('click', () => {
+          const invNo = row.dataset.invoice;
+          window.location.href = `data.html#invoice-${invNo}`;
+        });
+      });
+    } catch (err) {
+      console.error('Error loading dashboard:', err);
+    }
+  }
+
+  loadDashboard();
+</script>
+</body>
+</html>
