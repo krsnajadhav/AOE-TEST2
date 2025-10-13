@@ -99,7 +99,7 @@
 
 <script>
 const SUPABASE_URL = "https://xdelxrxkskvajnmowovf.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhkZWx4cnhrc2t2YWpubW93b3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTQ2NzcsImV4cCI6MjA3NTc3MDY3N30.rwOuTyCHoKUnoaA8eOg7vRSkgbl3HDEbOqB9_6i9_Jc";
+const SUPABASE_KEY = "YOUR_ANON_KEY"; // Replace with actual anon key
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const form = document.getElementById('invoiceForm');
@@ -109,7 +109,6 @@ const invoiceFooter = document.getElementById('invoiceFooter');
 const addItemBtn = document.getElementById('addItemBtn');
 const itemsContainer = document.getElementById('itemsContainer');
 const studentSelect = document.getElementById('student');
-
 let students = [];
 
 // Load students
@@ -183,7 +182,7 @@ function numberToWords(num){
   return num===0?'Zero':inWords(num);
 }
 
-// Generate invoice - FIXED COLUMN NAMES
+// Generate invoice
 form.onsubmit = async function(e){
   e.preventDefault();
 
@@ -205,18 +204,17 @@ form.onsubmit = async function(e){
     totalAmount += amt;
   });
 
-  // FIXED: Use lowercase column names to match database schema
   const invoice = { 
-    invoiceno: invoiceNo,           // Fixed: was invoiceNo
-    student: studentName, 
-    studentid: Number(studentId), 
-    mobile, 
-    address, 
-    classval: classVal,             // Fixed: was classVal
-    subject, 
-    items, 
-    totalamount: totalAmount,       // Fixed: was totalAmount
-    date: dateStr 
+    invoiceno: invoiceNo,
+    student: studentName,
+    studentid: Number(studentId),
+    mobile,
+    address,
+    classval: classVal,
+    subject,
+    items, // stored as JSONB
+    totalamount: totalAmount,
+    date: dateStr
   };
 
   try {
@@ -225,10 +223,7 @@ form.onsubmit = async function(e){
       .insert([invoice])
       .select();
     
-    if (error) {
-      console.error('Supabase error details:', error);
-      throw error;
-    }
+    if (error) throw error;
 
     // Show invoice
     let itemsHTML = '';
@@ -255,7 +250,7 @@ form.onsubmit = async function(e){
 
     invoiceFooter.innerHTML = 'Signed by: Shrikant Jadhav';
     invoiceArea.style.display = 'block';
-    
+
     alert('Invoice saved successfully!');
   } catch(err) {
     console.error('Error saving invoice:', err.message, err);
@@ -265,5 +260,6 @@ form.onsubmit = async function(e){
 
 loadStudents();
 </script>
+
 </body>
 </html>
