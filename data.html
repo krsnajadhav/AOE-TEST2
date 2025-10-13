@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AOE School Invoice Data</title>
+<style>
+  body { font-family: Arial, sans-serif; margin:0; padding:0; background:#f7fafc; color:#333; }
+  .container { max-width:900px; margin:30px auto; padding:0 10px; }
+  h1 { color:#1761a0; text-align:center; margin-top:20px; }
+  table { width:100%; border-collapse:collapse; margin-top:15px; }
+  th, td { border:1px solid #bbb; padding:8px; }
+  th { background:#e3e7ee; text-align:left; }
+  tbody tr { cursor: pointer; transition: background 0.2s; }
+  tbody tr:hover { background:#e2e8f0; }
+  #exportButtons { margin:15px 0; text-align:center; }
+  button { padding:8px 15px; margin-right:10px; background:#1761a0; color:white; border:none; cursor:pointer; border-radius:4px; }
+  button:hover { background:#114b7a; }
+
+  /* Invoice Modal */
+  #invoiceModal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; z-index:1000; }
+  #invoiceModal .modal-content { background:white; padding:20px; border-radius:10px; max-width:600px; width:90%; max-height:80%; overflow-y:auto; }
+  #invoiceModal h3 { margin-top:0; }
+  #invoiceModal table { width:100%; margin-top:10px; }
+  #invoiceModal th { background:#e3e7ee; }
+  #invoiceModal button.closeBtn { background:#d33; float:right; color:white; padding:5px 10px; border:none; border-radius:5px; cursor:pointer; }
+</style>
+</head>
+<body>
+
+<div id="headerContainer"></div>
+
+<div class="container">
+  <h1>All Invoices: AOE School of English and Sciences</h1>
+
+  <div id="exportButtons">
+    <button id="exportExcel">Export to Excel</button>
+    <button id="exportPDF">Export to PDF</button>
+  </div>
+
+  <table id="dataTable">
+    <thead>
+      <tr>
+        <th>Invoice No</th>
+        <th>Date</th>
+        <th>Student</th>
+        <th>Description</th>
+        <th>Total Amount (₹)</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+    <tfoot>
+      <tr>
+        <th colspan="4" style="text-align:right;">Grand Total</th>
+        <th id="grandTotal">₹0</th>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+<!-- Invoice Modal -->
+<div id="invoiceModal">
+  <div class="modal-content">
+    <button class="closeBtn" onclick="closeModal()">Close</button>
+    <h3>Invoices for <span id="modalStudentName"></span></h3>
+    <table id="modalInvoicesTable">
+      <thead>
+        <tr>
+          <th>Invoice No</th>
+          <th>Date</th>
+          <th>Description</th>
+          <th>Amount (₹)</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p><strong>Total Paid: ₹<span id="modalTotalPaid">0</span></strong></p>
+    <p><strong>Remaining Fees: ₹<span id="modalRemaining">0</span></strong></p>
+    <button onclick="printFeeStatement()" style="margin-top:10px;">Print Fee Statement</button>
+  </div>
+</div>
+
+<script>
+fetch('header.html')
+  .then(resp => resp.text())
+  .then(data => { document.getElementById('headerContainer').innerHTML = data; })
+  .catch(err => console.error('Failed to load header:',err));
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.47.1/dist/umd/supabase.min.js"></script>
+
+<script>
+// FIXED: Use correct Supabase key (not placeholder)
+const SUPABASE_URL = 'https://xdelxrxkskvajnmowovf.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhkZWx4cnhrc2t2YWpubW93b3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAxOTQ2NzcsImV4cCI6MjA3NTc3MDY3N30.rwOuTyCHoKUnoaA8eOg7vRSkgbl3HDEbOqB9_6i9_Jc';
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const tbody = document.querySelector('#dataTable tbody');
+const grandTotalEl = document.getElementById('grandTotal');
+let invoices = [];
+let grandTotal = 0;
+
+// Fetch all invoices - FIXED: use lowercase column names
+async function fetchInvoices() {
+  const { data, error } = await supabaseClient.from('invoices').select('*').order('date', { ascending: false });
+  if(error) {
+    console.error('Error fetching invoices:', error);
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Failed to fetch invoices.</td></tr>';
+    return;
+  }
+  invoices = data || [];
+  renderInvoicesTable();
+}
+
+function renderInvoicesTable() {
+  grandTotal = 0;
+  if(invoices.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No invoices found.</td></tr>';
+    grandTotalEl.textContent = '₹0';
+    return;
+  }
+
+  tbody.innerHTML = invoices.map(inv => {
+    let itemDesc = '';
+    if(inv.items && Array.isArray(inv.items)) {
+      itemDesc = inv.items.map((i, idx) => `${idx+1}. ${i.desc} (₹${i.amt})`).join(', ');
+    }
+    // FIXED: use lowercase totalamount
+    const totalAmount = inv.totalamount || (inv.items ? inv.items.reduce((sum,i)=>sum+i.amt,0) : 0);
+    grandTotal += totalAmount;
+    return `
+      <tr onclick="viewInvoicesModal(${inv.studentid}, '${inv.student}')">
+        <td>${inv.invoiceno}</td>
+        <td>${new Date(inv.date).toLocaleDateString()}</td>
+        <td>${inv.student}</td>
+        <td>${itemDesc}</td>
+        <td>₹${totalAmount}</td>
+      </tr>
+    `;
+  }).join('');
+  grandTotalEl.textContent = `₹${grandTotal}`;
+}
+
+// Invoice Modal - FIXED: use lowercase column names
+function viewInvoicesModal(studentId, studentName) {
+  document.getElementById('modalStudentName').textContent = studentName;
+  const tbodyModal = document.querySelector('#modalInvoicesTable tbody');
+  const studentInvoices = invoices.filter(inv => inv.studentid === studentId);
+  let totalPaid = 0;
+  if(studentInvoices.length === 0) {
+    tbodyModal.innerHTML = '<tr><td colspan="4" style="text-align:center;">No invoices found.</td></tr>';
+  } else {
+    tbodyModal.innerHTML = studentInvoices.map(inv => {
+      const totalAmount = inv.totalamount || (inv.items ? inv.items.reduce((sum,i)=>sum+i.amt,0) : 0);
+      totalPaid += totalAmount;
+      const itemDesc = inv.items ? inv.items.map((i, idx) => `${idx+1}. ${i.desc} (₹${i.amt})`).join(', ') : '';
+      return `<tr>
+        <td>${inv.invoiceno}</td>
+        <td>${new Date(inv.date).toLocaleDateString()}</td>
+        <td>${itemDesc}</td>
+        <td>₹${totalAmount}</td>
+      </tr>`;
+    }).join('');
+  }
+  document.getElementById('modalTotalPaid').textContent = totalPaid;
+  
+  // Get student total fees from first invoice or default to 0
+  const studentTotalFees = studentInvoices[0]?.studenttotalfees || 0;
+  document.getElementById('modalRemaining').textContent = studentTotalFees - totalPaid;
+  document.getElementById('invoiceModal').style.display = 'flex';
+}
+
+function closeModal(){ document.getElementById('invoiceModal').style.display = 'none'; }
+
+function printFeeStatement() {
+  const modalContent = document.querySelector('#invoiceModal .modal-content').innerHTML;
+  const printWindow = window.open('', '', 'height=600,width=800');
+  printWindow.document.write('<html><head><title>Fee Statement</title>');
+  printWindow.document.write('<style>body{font-family:Arial,sans-serif;} table{width:100%;border-collapse:collapse;margin-top:10px;} th,td{border:1px solid #bbb;padding:8px;text-align:left;} th{background:#e3e7ee;}</style>');
+  printWindow.document.write('</head><body>');
+  printWindow.document.write(modalContent);
+  printWindow.document.write('</body></html>');
+  printWindow.document.close();
+  printWindow.print();
+}
+
+// Export to Excel - FIXED: use lowercase column names
+document.getElementById('exportExcel').addEventListener('click', () => {
+  const wb = XLSX.utils.book_new();
+  const ws_data = [["Invoice No","Date","Student","Description","Total Amount (₹)"]];
+  invoices.forEach(inv => {
+    const itemDesc = inv.items ? inv.items.map((i, idx) => `${idx+1}. ${i.desc} (₹${i.amt})`).join(', ') : '';
+    const totalAmount = inv.totalamount || (inv.items ? inv.items.reduce((sum,i)=>sum+i.amt,0) : 0);
+    ws_data.push([inv.invoiceno, new Date(inv.date).toLocaleDateString(), inv.student, itemDesc, totalAmount]);
+  });
+  ws_data.push(["","","","Grand Total", grandTotal]);
+  const ws = XLSX.utils.aoa_to_sheet(ws_data);
+  XLSX.utils.book_append_sheet(wb, ws, "Invoices");
+  XLSX.writeFile(wb, "AOE_Invoices.xlsx");
+});
+
+// Export to PDF - FIXED: use lowercase column names
+document.getElementById('exportPDF').addEventListener('click', () => {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({orientation:'landscape'});
+  let y = 10;
+  doc.setFontSize(14);
+  doc.text("All Invoices: AOE School of English and Sciences", 14, y);
+  y += 10;
+  const headers = ["Invoice No","Date","Student","Description","Total Amount (₹)"];
+  const colWidths = [30,25,40,150,30];
+  const rowHeight = 10;
+  let startX = 10;
+  headers.forEach((h,i)=>{ doc.text(h,startX,y); startX+=colWidths[i]; });
+  y+=rowHeight;
+  invoices.forEach(inv => {
+    const itemDesc = inv.items ? inv.items.map((i, idx) => `${idx+1}. ${i.desc} (₹${i.amt})`).join(', ') : '';
+    const totalAmount = inv.totalamount || (inv.items ? inv.items.reduce((sum,i)=>sum+i.amt,0) : 0);
+    const rowData = [inv.invoiceno, new Date(inv.date).toLocaleDateString(), inv.student, itemDesc, totalAmount];
+    startX = 10;
+    rowData.forEach((cell,i)=>{ doc.text(String(cell),startX,y); startX+=colWidths[i]; });
+    y+=rowHeight;
+    if(y > 180) { doc.addPage(); y = 10; }
+  });
+  y+=5;
+  doc.text(`Grand Total: ₹${grandTotal}`,10,y);
+  doc.save('AOE_Invoices.pdf');
+});
+
+// Initial fetch
+fetchInvoices();
+</script>
+</body>
+</html>
