@@ -111,6 +111,7 @@ const addItemBtn = document.getElementById('addItemBtn');
 const itemsContainer = document.getElementById('itemsContainer');
 const studentSelect = document.getElementById('student');
 let students = [];
+let selectedStudent = null;
 
 // Load students
 async function loadStudents() {
@@ -141,12 +142,14 @@ function populateStudentDropdown() {
 // Auto-fill fields on student select
 studentSelect.addEventListener('change', () => {
   const s = students.find(st => st.id == studentSelect.value);
+  selectedStudent = s;
   if (s) {
     document.getElementById('mobile').value = s.mobile || '';
     document.getElementById('address').value = s.address || '';
     document.getElementById('class').value = s.classval || '';
     document.getElementById('subject').value = s.subjects || '';
   } else {
+    selectedStudent = null;
     document.getElementById('mobile').value = '';
     document.getElementById('address').value = '';
     document.getElementById('class').value = '';
@@ -187,9 +190,14 @@ function numberToWords(num){
 form.onsubmit = async function(e){
   e.preventDefault();
 
+  if (!selectedStudent) {
+    alert('Please select a student first.');
+    return;
+  }
+
   const invoiceNo = document.getElementById('invoiceNo').value.trim();
   const studentId = studentSelect.value;
-  const studentName = students.find(s=>s.id==studentId)?.name || '';
+  const studentName = selectedStudent.name;
   const mobile = document.getElementById('mobile').value;
   const address = document.getElementById('address').value;
   const classVal = document.getElementById('class').value;
@@ -201,22 +209,29 @@ form.onsubmit = async function(e){
   document.querySelectorAll('.itemRow').forEach(r => {
     const desc = r.querySelector('.itemDesc').value.trim();
     const amt = parseInt(r.querySelector('.itemAmount').value.trim()) || 0;
-    items.push({ desc, amt });
-    totalAmount += amt;
+    if (desc && amt > 0) {
+      items.push({ desc, amt });
+      totalAmount += amt;
+    }
   });
 
+  if (items.length === 0) {
+    alert('Please add at least one invoice item.');
+    return;
+  }
+
+  // Match the column names from data.html - all lowercase
   const invoice = { 
     invoiceno: invoiceNo,
     student: studentName,
     studentid: Number(studentId),
-    mobile,
-    address,
-    classval: classVal,
-    subject,
-    items, // stored as JSONB
+    items: items, // stored as JSONB
     totalamount: totalAmount,
-    date: dateStr
+    date: dateStr,
+    studenttotalfees: selectedStudent.totalfees || 0
   };
+
+  console.log('Submitting invoice:', invoice);
 
   try {
     const { data, error } = await supabaseClient
@@ -224,7 +239,12 @@ form.onsubmit = async function(e){
       .insert([invoice])
       .select();
     
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase error details:', error);
+      throw error;
+    }
+
+    console.log('Invoice saved successfully:', data);
 
     // Show invoice
     let itemsHTML = '';
@@ -253,9 +273,23 @@ form.onsubmit = async function(e){
     invoiceArea.style.display = 'block';
 
     alert('Invoice saved successfully!');
+    
+    // Reset form
+    form.reset();
+    selectedStudent = null;
+    itemsContainer.innerHTML = `
+      <div class="itemRow" style="margin-bottom:10px;">
+        <input type="text" placeholder="Item Description" class="itemDesc" required>
+        <input type="number" placeholder="Amount ₹" class="itemAmount" required>
+      </div>
+    `;
+    
+    // Scroll to invoice
+    invoiceArea.scrollIntoView({ behavior: 'smooth' });
+    
   } catch(err) {
-    console.error('Error saving invoice:', err.message, err);
-    alert('Failed to save invoice: ' + err.message);
+    console.error('Error saving invoice:', err);
+    alert('Failed to save invoice: ' + (err.message || 'Unknown error'));
   }
 };
 
